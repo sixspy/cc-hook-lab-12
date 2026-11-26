@@ -24,11 +24,13 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>端点名册</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>端点名册列表</h1>
+      <p>名册启用灯与事件队列同票（同锁 + BEGIN IMMEDIATE）· 停用端点入队联拒 · 非工单客服</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
+  <h2 class="轨题">登记新端点</h2>
   <label>端点键</label><input id="端点键" placeholder="ep-new"/>
   <label>名称</label><input id="名称"/>
   <label>回调URL</label><input id="回调URL" placeholder="https://..."/>
@@ -36,37 +38,186 @@
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="登记">登记端点</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>端点键</th><th>名称</th><th>回调URL</th><th>密钥版本</th><th>启用</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h2 class="轨题">停用后灌队 · 联拒试验台</h2>
+  <p class="说明">事故夹具「把端点停用后灌入队夹具」：对下方端点连续灌 3 条事件。
+    启用端应全部入正式待投；停用端必须逐条被联拒——正式队列不增，拒因中文与归档号直接可读。</p>
+  <label>试验端点键</label><input id="试端点" value="ep-legacy"/>
+  <button class="按钮" type="button" id="三灌钮">灌入队夹具 3 条（逐行验联拒）</button>
+  <button class="按钮 次" type="button" id="单试钮">只投 1 条试联拒</button>
+  <div id="试结果"></div>
+  <div class="表绕"><table class="逐行结果" id="逐行表" style="margin-top:10px;">
+    <thead><tr><th>试验事件号</th><th>事件类型</th><th>端点键</th><th>入队成败</th><th>拒因中文 / 归档</th></tr></thead>
+    <tbody id="逐行体"></tbody>
+  </table></div>
+</section>
+
+<section class="卷">
+  <h2 class="轨题">端点名册对账（库与页同源 · /api/端点）</h2>
+  <div class="表绕"><table>
+    <thead><tr>
+      <th>端点键</th><th>名称</th><th>回调URL</th><th>版本</th>
+      <th>启用灯</th><th>在队/待投</th><th>死信</th><th>归档拒</th>
+      <th>对账合法</th><th>名册结论</th><th>操作</th>
+    </tr></thead>
+    <tbody id="表"></tbody>
+  </table></div>
+</section>
 
   </main>
 
 <script>
-async function 刷表() {
+投递台.挂骨签('#骨签位', '双写两轨：被拒入队进只读归档，现行队列只读启用端集；凭证指纹为同票令牌');
+
+function 灯徽章(r) {
+  return 投递台.徽章(r.启用灯 || (r.启用 ? '启用' : '停用'));
+}
+function 合法徽章(r) {
+  return 投递台.徽章(r.合法 ? '合法' : '非法', r.合法 ? '' : '');
+}
+
+async function 刷表(高亮键) {
   const rows = await 投递台.getJSON('/api/端点');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td>'+投递台.安全文本(r.密钥版本)+'</td><td></td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.启用 ? '启用' : '停用'));
+    const tr = 投递台.行(
+      '<td><b>'+投递台.安全文本(r.端点键)+'</b></td>' +
+      '<td>'+投递台.安全文本(r.名称)+'</td>' +
+      '<td class="说明">'+投递台.安全文本(r.回调URL)+'</td>' +
+      '<td>'+投递台.安全文本(r.密钥版本)+'</td>' +
+      '<td class="c4"></td><td class="c5"></td><td>'+投递台.安全文本(r.死信数)+'</td>' +
+      '<td>'+投递台.安全文本(r.归档拒数)+'</td><td class="c8"></td><td>'+投递台.安全文本(r.名册结论)+'</td><td class="c10"></td>'
+    );
+    tr.children[4].appendChild(灯徽章(r));
+    tr.children[5].innerHTML = 投递台.安全文本(r.在队数) + ' / ' + 投递台.安全文本(r.待投数);
+    tr.children[8].appendChild(合法徽章(r));
+
     const btn = document.createElement('button'); btn.className='按钮 次'; btn.type='button';
-    btn.textContent = r.启用 ? '停用' : '启用';
-    btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用}); await 刷表(); };
-    tr.children[5].appendChild(btn); tb.appendChild(tr);
+    btn.textContent = r.启用 ? '停用（同票翻灯）' : '启用';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用});
+        await 刷表(r.端点键);
+      } catch (e) {
+        document.getElementById('消息').textContent = e.message;
+        btn.disabled = false;
+      }
+    };
+    tr.children[10].appendChild(btn);
+
+    const 试 = document.createElement('button'); 试.className='按钮'; 试.type='button';
+    试.style.marginLeft = '6px'; 试.textContent = '联拒试投';
+    试.onclick = async () => {
+      document.getElementById('试端点').value = r.端点键;
+      await 单条试投(r.端点键);
+      await 刷表(r.端点键);
+    };
+    tr.children[10].appendChild(试);
+    if (高亮键 === r.端点键) tr.style.outline = '2px solid var(--警)';
+    tb.appendChild(tr);
   }
 }
+
 document.getElementById('登记').onclick = async () => {
+  const 消息 = document.getElementById('消息');
   try {
-    await 投递台.postJSON('/api/端点', {
+    const r = await 投递台.postJSON('/api/端点', {
       端点键: document.getElementById('端点键').value,
       名称: document.getElementById('名称').value,
       回调URL: document.getElementById('回调URL').value,
       密钥版本: document.getElementById('密钥版本').value,
     });
-    document.getElementById('消息').textContent = '已登记';
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
+    消息.style.color = 'var(--好)';
+    消息.textContent = '已登记，启用灯=启用，凭证启用指纹已同票钉入';
+    await 刷表(r.端点键);
+  } catch (e) { 消息.style.color = 'var(--险)'; 消息.textContent = e.message; }
 };
-刷表();
+
+function 加逐行(ev, ok, 文案, 归档号) {
+  const body = document.getElementById('逐行体');
+  const tr = document.createElement('tr');
+  tr.className = ok ? '成' : '败';
+  tr.innerHTML =
+    '<td>'+投递台.安全文本(ev.事件号)+'</td>' +
+    '<td>'+投递台.安全文本(ev.事件类型)+'</td>' +
+    '<td>'+投递台.安全文本(ev.端点键)+'</td>' +
+    '<td class="c3"></td>' +
+    '<td>'+投递台.安全文本(文案) + (归档号 ? '<br><small>归档轨：'+投递台.安全文本(归档号)+'</small>' : '')+'</td>';
+  tr.children[3].appendChild(投递台.徽章(ok ? '成功·已入待投' : '拒入队·联拒', ok ? '成功' : '联拒'));
+  body.appendChild(tr);
+}
+
+async function 单条试投(端点键, 序号) {
+  const key = 端点键 || document.getElementById('试端点').value.trim();
+  const ev = {
+    事件号: 'EVT-UI-STOP-' + Date.now() + (序号 != null ? '-' + 序号 : ''),
+    事件类型: 'stop.probe',
+    端点键: key,
+    载荷摘要: 'hook12-ui-probe-' + (序号 == null ? 'one' : 序号),
+    优先级: '普通',
+  };
+  const box = document.getElementById('试结果');
+  try {
+    const r = await 投递台.postJSON('/api/事件/入队', ev);
+    加逐行(ev, true, r.入队结果 || '已入队·待投');
+    投递台.渲染成败(box, true,
+      '端点「' + key + '」启用灯=启用，事件 ' + ev.事件号 + ' 已同票写入正式队列（状态：待投）。',
+      '<div class="卡"><small>事件号</small><b>'+投递台.安全文本(r.事件号)+'</b></div>' +
+      '<div class="卡"><small>入队成败</small><b>true</b></div>' +
+      '<div class="卡"><small>命运</small><b style="font-size:.95rem">待投</b></div>');
+    return true;
+  } catch (e) {
+    const d = e.数据 || {};
+    加逐行(ev, false, d.拒因 || e.message, d.归档号);
+    投递台.渲染成败(box, false,
+      (d.拒因 || e.message) + (d.归档号 ? '\n只读归档号：' + d.归档号 : ''),
+      '<div class="卡 险"><small>启用灯</small><b>停用</b></div>' +
+      '<div class="卡 险"><small>入队成败</small><b>false</b></div>' +
+      '<div class="卡"><small>归档号</small><b style="font-size:.9rem">'+投递台.安全文本(d.归档号 || '—')+'</b></div>');
+    return false;
+  }
+}
+
+document.getElementById('单试钮').onclick = async () => {
+  await 单条试投();
+  await 刷表();
+};
+
+document.getElementById('三灌钮').onclick = async () => {
+  const key = document.getElementById('试端点').value.trim();
+  document.getElementById('逐行体').innerHTML = '';
+  const 类型 = ['invoice.paid', 'user.created', 'order.refund'];
+  let 成 = 0, 拒 = 0, 首拒因 = '';
+  for (let i = 0; i < 3; i++) {
+    const ev = {
+      事件号: 'EVT-UI-FIX-' + Date.now() + '-' + i,
+      事件类型: 类型[i], 端点键: key,
+      载荷摘要: 'stop=ui-' + (i + 1),
+      优先级: ['紧急', '普通', '低'][i],
+    };
+    try {
+      await 投递台.postJSON('/api/事件/入队', ev);
+      加逐行(ev, true, '启用端：已入正式待投'); 成++;
+    } catch (e) {
+      const d = e.数据 || {};
+      if (!首拒因) 首拒因 = d.拒因 || e.message;
+      加逐行(ev, false, d.拒因 || e.message, d.归档号); 拒++;
+    }
+  }
+  投递台.渲染成败(document.getElementById('试结果'), 拒 === 0,
+    '灌队完成：成功入队 ' + 成 + ' 条，停用联拒 ' + 拒 + ' 条。' +
+    (拒 > 0
+      ? '\n首条拒因：' + 首拒因 +
+        '\n被拒条目正式待投行不增，已落只读归档轨，可到「事件队列」页归档表核对。'
+      : '该端点当前为启用灯，故全部进入正式集合；可先在名册表把它停用再灌。'));
+  await 刷表(key);
+};
+
+刷表(new URLSearchParams(location.search).get('端点键'));
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

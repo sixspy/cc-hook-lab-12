@@ -5,6 +5,7 @@ import uuid
 from app.db import 连接
 from app.services.时间 import 此刻
 from app.services import 签名目录
+from app.modules.并发投递锁 import 同锁
 
 
 def _签名(密钥版本: str, 事件号: str, 摘要: str) -> str:
@@ -17,6 +18,7 @@ def 投递一次(事件号: str, 强制失败: bool = False) -> dict:
     """对事件执行一次签名投递。本地模拟：默认成功；强制失败或端点停用则记失败。"""
     t = 此刻()
     尝试号 = f"TRY-{uuid.uuid4().hex[:10]}"
+    同锁.acquire()
     conn = 连接()
     try:
         ev = conn.execute("SELECT * FROM 事件 WHERE 事件号=?", (事件号,)).fetchone()
@@ -28,7 +30,7 @@ def 投递一次(事件号: str, 强制失败: bool = False) -> dict:
         if not ep:
             raise ValueError("端点缺失")
         if int(ep["启用"]) != 1:
-            raise ValueError("端点停用")
+            raise ValueError("端点已停用，停用联拒：拒绝投递，不产生新的投递流水")
         规 = 签名目录.签名规()
         最大 = int(规.get("最大重试") or 3)
         sig = _签名(ep["密钥版本"], 事件号, ev["载荷摘要"])
@@ -73,3 +75,4 @@ def 投递一次(事件号: str, 强制失败: bool = False) -> dict:
         return {"尝试号": 尝试号, "状态": "失败", "事件状态": 事件状态, "失败次数": 新失败, "签名摘要": sig}
     finally:
         conn.close()
+        同锁.release()

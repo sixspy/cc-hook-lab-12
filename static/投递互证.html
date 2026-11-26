@@ -24,32 +24,114 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>投递互证</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递互证详情</h1>
+      <p>事件账 · 投递流水 · 死信匣三账互证 · 停用端挂账作影子单列，不混正式集合</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
-  <button class="按钮" type="button" id="跑">跑互证</button>
-  <pre id="出" class="说明"></pre>
+  <button class="按钮" type="button" id="跑">跑一次互证（库内实时口径）</button>
+  <div id="结论"></div>
+  <div id="影子"></div>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h2 class="轨题">互证批次目录（GET /api/互证）</h2>
+  <div class="表绕"><table>
+    <thead><tr><th>批次号</th><th>时刻</th><th>正式总数</th><th>已投递</th><th>死信</th><th>待投/投递中</th><th>停用挂账</th><th>对齐</th><th>中文说明</th></tr></thead>
+    <tbody id="表"></tbody>
+  </table></div>
+</section>
 
   </main>
 
 <script>
+投递台.挂骨签('#骨签位');
+
+function 结论卡(rep) {
+  const box = document.getElementById('结论');
+  const ok = !!rep.是否对齐;
+  box.innerHTML =
+    '<div style="margin-top:12px" id="灯位"></div>' +
+    '<div class="'+(ok ? '成框' : '拒因框')+'">'+
+      (ok ? '✅ 互证结论：对齐合法。' : '⛔ 互证结论：撕裂非法。') +
+      投递台.安全文本(rep.说明) +
+    '</div>' +
+    '<div class="结果格">' +
+      '<div class="卡"><small>正式事件总数（JOIN 启用端）</small><b>'+投递台.安全文本(rep.事件总数)+'</b></div>' +
+      '<div class="卡"><small>已投递</small><b>'+投递台.安全文本(rep.已投递数)+'</b></div>' +
+      '<div class="卡"><small>正式死信</small><b>'+投递台.安全文本(rep.死信数)+'</b></div>' +
+      '<div class="卡"><small>待投/投递中</small><b>'+投递台.安全文本(rep.待投数)+'</b></div>' +
+      '<div class="卡"><small>死信匣待处置</small><b>'+投递台.安全文本(rep.死信匣待处置)+'</b></div>' +
+      '<div class="卡 '+(rep.停用端挂账 ? '险' : '')+'"><small>停用端挂账（影子）</small><b>'+投递台.安全文本(rep.停用端挂账)+'</b></div>' +
+      '<div class="卡"><small>停用端死信</small><b>'+投递台.安全文本(rep.停用端死信)+'</b></div>' +
+      '<div class="卡 '+(rep.归档拒数 ? '警' : '')+'"><small>归档拒因条数</small><b>'+投递台.安全文本(rep.归档拒数)+'</b></div>' +
+    '</div>';
+  document.getElementById('灯位').appendChild(
+    投递台.徽章(ok ? '对齐' : '撕裂', ok ? '对齐' : '撕裂'));
+}
+
+function 影子表(rep) {
+  const host = document.getElementById('影子');
+  const rows = rep.影子明细 || [];
+  if (!rows.length) {
+    host.innerHTML = '<div class="成框">影子明细为空：没有停用端在队挂账，正式集合与物理队列一致。</div>';
+    return;
+  }
+  let html = '<h2 class="轨题" style="margin-top:14px">对账影子明细 · 停用端挂账 ' + rows.length +
+    ' 条（不混入正式集合）</h2>' +
+    '<div class="警框">以下行物理上仍在「事件」表且状态为待投/投递中，但端点启用灯=停用。' +
+    '它们只作为<b>对账影子</b>出现在这里，供清退核对；事件队列正式读集合不返回这些行。</div>' +
+    '<div class="表绕"><table><thead><tr><th>事件号</th><th>类型</th><th>停用端点</th><th>状态</th><th>优先级</th><th>入队时</th></tr></thead><tbody>';
+  for (const r of rows) {
+    html += '<tr><td>'+投递台.事件链(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td><td>'+投递台.安全文本(r.状态)+'</td>' +
+      '<td>'+投递台.安全文本(r.优先级)+'</td><td><small>'+投递台.安全文本(r.入队时)+'</small></td></tr>';
+  }
+  host.innerHTML = html + '</tbody></table></div>';
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/互证');
   const tb = document.getElementById('表'); tb.innerHTML='';
+  if (!rows.length) tb.innerHTML = '<tr><td colspan="9" class="说明">尚无互证批次，点上方按钮跑一次</td></tr>';
   for (const r of rows) {
-    tb.appendChild(投递台.行('<td>'+r.批次号+'</td><td>'+投递台.安全文本(r.时刻)+'</td><td>'+r.事件总数+'</td><td>'+r.已投递数+'</td><td>'+r.死信数+'</td><td>'+r.待投数+'</td><td>'+(r.是否对齐?'是':'否')+'</td><td>'+投递台.安全文本(r.说明)+'</td>'));
+    const ok = r.是否对齐 ? 1 : 0;
+    const tr = 投递台.行(
+      '<td>'+投递台.安全文本(r.批次号)+'</td>' +
+      '<td><small>'+投递台.安全文本(r.时刻)+'</small></td>' +
+      '<td>'+投递台.安全文本(r.事件总数)+'</td>' +
+      '<td>'+投递台.安全文本(r.已投递数)+'</td>' +
+      '<td>'+投递台.安全文本(r.死信数)+'</td>' +
+      '<td>'+投递台.安全文本(r.待投数)+'</td>' +
+      '<td class="c6"></td><td class="c7"></td>' +
+      '<td>'+投递台.安全文本(r.说明)+'</td>'
+    );
+    if (int(r.停用挂账) > 0) {
+      tr.children[6].appendChild(投递台.徽章('挂账 ' + r.停用挂账, '非法'));
+    } else {
+      tr.children[6].textContent = '0';
+    }
+    tr.children[7].appendChild(投递台.徽章(ok ? '对齐' : '撕裂', ok ? '对齐' : '撕裂'));
+    tb.appendChild(tr);
   }
 }
+function int(v){ const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+
 document.getElementById('跑').onclick = async () => {
-  document.getElementById('出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
-  await 刷表();
+  const btn = document.getElementById('跑'); btn.disabled = true;
+  try {
+    const rep = await 投递台.postJSON('/api/互证/跑', {});
+    结论卡(rep); 影子表(rep);
+    await 刷表();
+  } catch (e) {
+    document.getElementById('结论').innerHTML = '<div class="拒因框">互证失败：' + 投递台.安全文本(e.message) + '</div>';
+  } finally { btn.disabled = false; }
 };
+
 刷表();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

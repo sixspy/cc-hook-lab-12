@@ -24,45 +24,84 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>死信匣</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>死信匣目录</h1>
+      <p>重试耗尽入匣 · 停用端重投同票联拒、不留半提交待投行 · 非工单客服</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号"/>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="重投钮">死信重投</button>
+  <h2 class="轨题">按事件号处置</h2>
+  <label>事件号</label><input id="事件号" placeholder="EVT-demo-05"/>
+  <div id="消息"></div>
+  <button class="按钮" type="button" id="重投钮">死信重投（启用端才回待投）</button>
   <button class="按钮 次" type="button" id="作废钮">作废</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table>
+  <thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态/中文命运</th><th>行内操作</th></tr></thead>
+  <tbody id="表"></tbody>
+</table></div></section>
 
   </main>
 
 <script>
+投递台.挂骨签('#骨签位', '死信重投与启用灯联查同票：停用端在任何改写前被中文拒因拦下，事件仍是死信、匣行仍待处置');
+
+function 显示消息(ok, 文本) {
+  投递台.渲染成败(document.getElementById('消息'), ok, 文本);
+}
+
+async function 动作(kind, 事件号) {
+  try {
+    if (kind === '重投') {
+      const r = await 投递台.postJSON('/api/死信/重投', {事件号});
+      显示消息(true, '事件 ' + 事件号 + ' 已重投：死信行→已重投，事件→待投，并已立即尝试投递一次。');
+      if (r && r.投递) { /* 投递结果细节不强制 */ }
+    } else {
+      await 投递台.postJSON('/api/死信/作废', {事件号, 原因: '页面人工作废'});
+      显示消息(true, '事件 ' + 事件号 + ' 的死信已作废，不再投递。');
+    }
+  } catch (e) {
+    显示消息(false, e.message + '\n（库内状态未被部分改写：事件仍为死信、匣行仍待处置，可到事件详情核对）');
+  }
+  await 刷表();
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/死信');
   const tb = document.getElementById('表'); tb.innerHTML='';
+  if (!rows.length) tb.innerHTML = '<tr><td colspan="7" class="说明">死信匣为空</td></tr>';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
-    tr.children[5].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td><small>'+投递台.安全文本(r.死信号)+'</small></td>' +
+      '<td>'+投递台.事件链(r.事件号)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td>' +
+      '<td>'+投递台.安全文本(r.失败次数)+'</td>' +
+      '<td>'+投递台.安全文本(r.末次原因)+'</td>' +
+      '<td class="c5"></td><td class="c6"></td>'
+    );
+    const cell = tr.children[5];
+    cell.appendChild(投递台.徽章(r.状态, r.状态 === '已作废' ? '已作废' : (r.状态 === '已重投' ? '成功' : '联拒')));
+    const fate = document.createElement('div'); fate.className='命运';
+    fate.textContent = 投递台.匣命运(r.状态);
+    cell.appendChild(fate);
+
+    const 重 = document.createElement('button'); 重.className='按钮'; 重.type='button';
+    重.textContent = '重投';
+    重.disabled = r.状态 !== '待处置';
+    重.onclick = () => 动作('重投', r.事件号);
+    const 废 = document.createElement('button'); 废.className='按钮 次'; 废.type='button';
+    废.style.marginLeft='6px'; 废.textContent='作废';
+    废.disabled = r.状态 !== '待处置';
+    废.onclick = () => 动作('作废', r.事件号);
+    tr.children[6].appendChild(重); tr.children[6].appendChild(废);
+    tb.appendChild(tr);
   }
 }
-document.getElementById('重投钮').onclick = async () => {
-  try {
-    const rep = await 投递台.postJSON('/api/死信/重投', {事件号: document.getElementById('事件号').value});
-    document.getElementById('消息').textContent = JSON.stringify(rep);
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
-};
-document.getElementById('作废钮').onclick = async () => {
-  try {
-    const rep = await 投递台.postJSON('/api/死信/作废', {事件号: document.getElementById('事件号').value});
-    document.getElementById('消息').textContent = JSON.stringify(rep);
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
-};
+document.getElementById('重投钮').onclick = () => 动作('重投', document.getElementById('事件号').value.trim());
+document.getElementById('作废钮').onclick = () => 动作('作废', document.getElementById('事件号').value.trim());
 刷表();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

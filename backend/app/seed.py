@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS 事件 (
   载荷摘要 TEXT NOT NULL DEFAULT '',
   优先级 TEXT NOT NULL DEFAULT '普通',
   状态 TEXT NOT NULL DEFAULT '待投',
+  启用指纹 TEXT NOT NULL DEFAULT '',
   入队时 TEXT NOT NULL,
   更新时 TEXT NOT NULL
 );
@@ -58,8 +59,28 @@ CREATE TABLE IF NOT EXISTS 互证批次 (
   已投递数 INTEGER NOT NULL,
   死信数 INTEGER NOT NULL,
   待投数 INTEGER NOT NULL,
+  停用挂账 INTEGER NOT NULL DEFAULT 0,
   是否对齐 INTEGER NOT NULL,
   说明 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS 停用归档 (
+  归档号 TEXT PRIMARY KEY,
+  时刻 TEXT NOT NULL,
+  事件号 TEXT NOT NULL DEFAULT '',
+  事件类型 TEXT NOT NULL DEFAULT '',
+  端点键 TEXT NOT NULL,
+  载荷摘要 TEXT NOT NULL DEFAULT '',
+  优先级 TEXT NOT NULL DEFAULT '普通',
+  入队成败 INTEGER NOT NULL DEFAULT 0,
+  拒因 TEXT NOT NULL DEFAULT '',
+  启用指纹 TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS 端点凭证 (
+  端点键 TEXT PRIMARY KEY,
+  启用 INTEGER NOT NULL DEFAULT 1,
+  启用指纹 TEXT NOT NULL DEFAULT '',
+  版本号 INTEGER NOT NULL DEFAULT 1,
+  更新时 TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS 操作留痕 (
   编号 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,9 +96,40 @@ def 此刻() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _补列(conn, 表: str, 列: str, 定义: str) -> None:
+    已有 = {r["name"] for r in conn.execute(f"PRAGMA table_info({表})").fetchall()}
+    if 列 not in 已有:
+        conn.execute(f"ALTER TABLE {表} ADD COLUMN {列} {定义}")
+
+
+def _迁移(conn) -> None:
+    """老库平滑补列/补凭证钉，全部幂等。"""
+    _补列(conn, "事件", "启用指纹", "TEXT NOT NULL DEFAULT ''")
+    _补列(conn, "互证批次", "停用挂账", "INTEGER NOT NULL DEFAULT 0")
+    # 为已存在但缺凭证钉的端点补钉
+    from app.modules.停用联拒 import 启用指纹 as _指纹
+    from app.services.时间 import 此刻 as _此刻
+
+    t = _此刻()
+    for ep in conn.execute("SELECT * FROM 投递端点").fetchall():
+        row = conn.execute(
+            "SELECT 端点键 FROM 端点凭证 WHERE 端点键=?", (ep["端点键"],)
+        ).fetchone()
+        if not row:
+            conn.execute(
+                "INSERT INTO 端点凭证(端点键,启用,启用指纹,版本号,更新时) VALUES (?,?,?,?,?)",
+                (
+                    ep["端点键"], int(ep["启用"]),
+                    _指纹(ep["端点键"], ep["启用"], ep["密钥版本"]),
+                    1, t,
+                ),
+            )
+
+
 def 初始化库() -> None:
     conn = 连接()
     conn.executescript(建表)
+    _迁移(conn)
     if conn.execute("SELECT COUNT(*) AS c FROM 用户").fetchone()["c"] == 0:
         conn.execute("INSERT INTO 用户(账号,密码哈希,角色) VALUES (?,?,?)", ("admin", "123456", "管理员"))
     if conn.execute("SELECT COUNT(*) AS c FROM 签名规").fetchone()["c"] == 0:
@@ -90,6 +142,7 @@ def 初始化库() -> None:
         }.items():
             conn.execute("INSERT INTO 签名规(键,值) VALUES (?,?)", (k, v))
     if conn.execute("SELECT COUNT(*) AS c FROM 投递端点").fetchone()["c"] == 0:
+        from app.modules.停用联拒 import 启用指纹 as _指纹
         for row in [
             ("ep-billing", "账单回调", "https://example.local/hooks/billing", "v1", 1, "账务"),
             ("ep-notify", "通知回调", "https://example.local/hooks/notify", "v1", 1, "通知"),
@@ -100,6 +153,10 @@ def 初始化库() -> None:
             conn.execute(
                 "INSERT INTO 投递端点(端点键,名称,回调URL,密钥版本,启用,说明) VALUES (?,?,?,?,?,?)",
                 row,
+            )
+            conn.execute(
+                "INSERT INTO 端点凭证(端点键,启用,启用指纹,版本号,更新时) VALUES (?,?,?,?,?)",
+                (row[0], row[4], _指纹(row[0], row[4], row[3]), 1, 此刻()),
             )
     if conn.execute("SELECT COUNT(*) AS c FROM 事件").fetchone()["c"] == 0:
         t = 此刻()

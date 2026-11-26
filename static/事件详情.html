@@ -25,25 +25,132 @@
   <main class="主区">
     <header class="页头">
       <h1>事件详情</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <p>一颗事件的完整命运：入队指纹 → 投递流水 → 死信/重投 · 主链实体可点</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
   <label>事件号</label><input id="事件号"/>
   <button class="按钮" type="button" id="查">查询</button>
+  <div id="命运头"></div>
+</section>
+
+<section class="卷" id="概览卷" hidden>
+  <h2 class="轨题">事件本账（GET /api/事件/&lt;号&gt;）</h2>
+  <div class="结果格" id="格"></div>
+  <p class="说明" id="指纹行"></p>
+</section>
+
+<section class="卷" id="尝试卷" hidden>
+  <h2 class="轨题">投递流水（同事件的每次尝试）</h2>
+  <div class="表绕"><table>
+    <thead><tr><th>尝试号</th><th>时刻</th><th>端点</th><th>状态</th><th>响应码</th><th>说明</th></tr></thead>
+    <tbody id="尝试体"></tbody>
+  </table></div>
+</section>
+
+<section class="卷" id="死信卷" hidden>
+  <h2 class="轨题">死信匣记录</h2>
+  <div id="死信体"></div>
+  <button class="按钮" type="button" id="重投此">重投此死信</button>
+  <div id="操作消息"></div>
+</section>
+
+<section class="卷" id="原始卷" hidden>
+  <h2 class="轨题">原始 JSON</h2>
   <pre id="出" class="说明"></pre>
 </section>
 
   </main>
 
 <script>
-document.getElementById('查').onclick = async () => {
+投递台.挂骨签('#骨签位');
+
+async function 查询(id) {
+  id = (id || '').trim();
+  if (!id) return;
+  document.getElementById('事件号').value = id;
+  let d;
   try {
-    const id = document.getElementById('事件号').value;
-    document.getElementById('出').textContent = JSON.stringify(await 投递台.getJSON('/api/事件/'+encodeURIComponent(id)), null, 2);
-  } catch (e) { document.getElementById('出').textContent = e.message; }
-};
+    d = await 投递台.getJSON('/api/事件/' + encodeURIComponent(id));
+  } catch (e) {
+    document.getElementById('命运头').innerHTML = '<div class="拒因框">查不到事件：' + 投递台.安全文本(e.message) +
+      '<br>提示：被停用联拒的尝试不会生成正式事件行，其记录在 <a class="链" href="/事件队列.html">事件队列页的只读归档轨</a>。</div>';
+    document.getElementById('概览卷').hidden = true;
+    document.getElementById('尝试卷').hidden = true;
+    document.getElementById('死信卷').hidden = true;
+    document.getElementById('原始卷').hidden = true;
+    return;
+  }
+
+  document.getElementById('命运头').innerHTML =
+    '<div style="margin-top:10px" id="灯"></div>' +
+    '<div class="成框" id="命运句"></div>';
+  document.getElementById('灯').appendChild(投递台.徽章(d.状态));
+  document.getElementById('命运句').textContent = 投递台.命运文(d.状态) +
+    '；端点 ' + d.端点键 + '（' + (d.优先级 || '普通') + '优先级）';
+
+  document.getElementById('格').innerHTML =
+    '<div class="卡"><small>事件号</small><b style="font-size:.95rem">'+投递台.安全文本(d.事件号)+'</b></div>' +
+    '<div class="卡"><small>事件类型</small><b style="font-size:.95rem">'+投递台.安全文本(d.事件类型)+'</b></div>' +
+    '<div class="卡"><small>端点键</small><b style="font-size:.95rem">'+投递台.安全文本(d.端点键)+'</b></div>' +
+    '<div class="卡"><small>优先级</small><b>'+投递台.安全文本(d.优先级)+'</b></div>' +
+    '<div class="卡"><small>入队时</small><b style="font-size:.85rem">'+投递台.安全文本(d.入队时)+'</b></div>' +
+    '<div class="卡"><small>更新时</small><b style="font-size:.85rem">'+投递台.安全文本(d.更新时)+'</b></div>';
+  document.getElementById('指纹行').textContent =
+    '同票启用指纹：' + (d.启用指纹 || '（种子行无指纹）') +
+    '　载荷摘要：' + (d.载荷摘要 || '');
+  document.getElementById('概览卷').hidden = false;
+
+  const tries = d.尝试 || [];
+  document.getElementById('尝试卷').hidden = false;
+  const tb = document.getElementById('尝试体'); tb.innerHTML = '';
+  if (!tries.length) tb.innerHTML = '<tr><td colspan="6" class="说明">尚未投递</td></tr>';
+  for (const t of tries) {
+    const ok = t.状态 === '成功';
+    const tr = 投递台.行(
+      '<td><small>'+投递台.安全文本(t.尝试号)+'</small></td>' +
+      '<td><small>'+投递台.安全文本(t.投递时)+'</small></td>' +
+      '<td>'+投递台.安全文本(t.端点键)+'</td>' +
+      '<td class="s3"></td><td>'+投递台.安全文本(t.响应码)+'</td>' +
+      '<td>'+投递台.安全文本(t.说明)+'</td>');
+    tr.children[3].appendChild(投递台.徽章(t.状态, ok ? '成功' : '失败'));
+    tb.appendChild(tr);
+  }
+
+  if (d.死信) {
+    document.getElementById('死信卷').hidden = false;
+    const x = d.死信;
+    document.getElementById('死信体').innerHTML =
+      '<p>死信号 <b>'+投递台.安全文本(x.死信号)+'</b>　状态 <span id="匣灯"></span></p>' +
+      '<p class="命运">'+投递台.匣命运(x.状态)+'；失败次数 '+投递台.安全文本(x.失败次数)+
+      '；末次原因：'+投递台.安全文本(x.末次原因)+'</p>';
+    const host = document.getElementById('匣灯');
+    host.appendChild(投递台.徽章(x.状态, x.状态 === '待处置' ? '联拒' : '成功'));
+    document.getElementById('重投此').disabled = x.状态 !== '待处置';
+    document.getElementById('重投此').onclick = async () => {
+      const box = document.getElementById('操作消息');
+      try {
+        await 投递台.postJSON('/api/死信/重投', {事件号: id});
+        投递台.渲染成败(box, true, '重投成功，事件回到待投并已尝试投递一次。');
+      } catch (e) {
+        投递台.渲染成败(box, false, e.message + '\n事务已整体回滚，未留半提交待投行。');
+      }
+      await 查询(id);
+    };
+  } else {
+    document.getElementById('死信卷').hidden = true;
+  }
+
+  document.getElementById('原始卷').hidden = false;
+  document.getElementById('出').textContent = JSON.stringify(d, null, 2);
+}
+
+document.getElementById('查').onclick = () => 查询(document.getElementById('事件号').value);
+const q = new URLSearchParams(location.search).get('事件号');
+if (q) 查询(q);
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

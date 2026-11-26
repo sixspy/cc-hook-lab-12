@@ -25,20 +25,38 @@
   <main class="主区">
     <header class="页头">
       <h1>签名规</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <p>HMAC 签名与重试规矩 · 每一种事件命运都有中文口径 · 非工单客服</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
+  <h2 class="轨题">事件命运口径（签名规的一部分）</h2>
+  <table>
+    <thead><tr><th>命运节点</th><th>中文含义</th><th>进入条件</th><th>下一步</th></tr></thead>
+    <tbody>
+      <tr><td><span class="徽章 待投">待投</span></td><td class="命运"><b>已入队，排队等待签名投递</b></td><td>端点启用灯=启用，入队联查同票通过</td><td>签名后投递 → 投递中</td></tr>
+      <tr><td><span class="徽章 投递中">投递中</span></td><td class="命运"><b>已出队，签名请求在途</b></td><td>投递服务取走事件并生成签名摘要</td><td>2xx → 已投递；失败 → 退避重试</td></tr>
+      <tr><td><span class="徽章 已投递">已投递</span></td><td class="命运"><b>对端已确认，命运完成</b></td><td>收到 2xx 响应，流水记成功</td><td>互证计入已投递</td></tr>
+      <tr><td><span class="徽章 死信">死信</span></td><td class="命运"><b>重试耗尽，落入死信匣待处置</b></td><td>失败次数达到签名规「最大重试」</td><td>人工重投或作废</td></tr>
+      <tr><td><span class="徽章 联拒">停用联拒</span></td><td class="命运"><b>停用端点拒绝入队，成败=false</b></td><td>同票联查启用灯=停用</td><td>写只读归档轨与中文拒因，正式队列不增</td></tr>
+      <tr><td><span class="徽章 非法">影子挂账</span></td><td class="命运"><b>停用灯亮却有在队行，对账判非法</b></td><td>跨表联查发现停用端物理在队行</td><td>互证影子明细单列，待清退，不混正式集合</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="卷">
+  <h2 class="轨题">改签名规键值</h2>
   <label>键</label><input id="键" placeholder="最大重试"/>
   <label>值</label><input id="值"/>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="保存">保存签名规</button>
 </section>
-<section class="卷"><pre id="规" class="说明"></pre></section>
+<section class="卷"><h2 class="轨题">现行签名规（GET /api/签名规）</h2><pre id="规" class="说明"></pre></section>
 
   </main>
 
 <script>
+投递台.挂骨签('#骨签位', '最大重试/超时/签名算法等规矩与命运口径同源展示');
 async function 刷() {
   document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
 }
@@ -54,5 +72,6 @@ document.getElementById('保存').onclick = async () => {
 刷();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

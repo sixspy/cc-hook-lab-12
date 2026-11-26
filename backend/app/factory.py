@@ -5,6 +5,7 @@ from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from app import seed
 from app.services import 会话, 入队, 投递, 死信, 重试, 互证, 端点, 夹具, 说明, 签名目录
+from app.modules.停用联拒 import 停用联拒错误, 骨签
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -86,8 +87,27 @@ def create_app() -> Flask:
         body = request.get_json(force=True, silent=True) or {}
         try:
             return jsonify(入队.建事件(body))
+        except 停用联拒错误 as e:
+            # 沿用既有 400 口径以兼容主链；载荷额外带中文拒因与入队成败=false。
+            return jsonify(e.载荷()), 400
         except ValueError as e:
-            return jsonify({"错误": str(e)}), 400
+            return jsonify({"错误": str(e), "入队成败": False}), 400
+
+    @app.get("/api/队列")
+    def api_现行队列():
+        return jsonify(签名目录.现行队列())
+
+    @app.get("/api/事件全量")
+    def api_事件全量():
+        return jsonify(签名目录.事件全量())
+
+    @app.get("/api/停用归档")
+    def api_停用归档():
+        return jsonify({"骨签": 骨签, "归档": 签名目录.停用归档列表()})
+
+    @app.get("/api/名册对账")
+    def api_名册对账():
+        return jsonify({"骨签": 骨签, "对账": 端点.名册对账()})
 
     @app.get("/api/投递")
     def api_投递列表():
@@ -127,7 +147,8 @@ def create_app() -> Flask:
 
     @app.get("/api/端点")
     def api_端点():
-        return jsonify(签名目录.端点列表())
+        # 直接返回带启用灯/在队数/合法结论的名册对账面，保证页与库同源。
+        return jsonify(端点.名册对账())
 
     @app.post("/api/端点")
     def api_端点登记():

@@ -24,48 +24,92 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>投递流水</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递流水策略</h1>
+      <p>每次签名投递留一条流水 · 停用端点联拒投递且不产生新流水 · 重试/死信策略可点主链</p>
     </header>
+    <div id="骨签位"></div>
 
 <section class="卷">
+  <h2 class="轨题">手动投递一次</h2>
   <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
-  <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
-  <p class="消息" id="消息"></p>
+  <label><input type="checkbox" id="强制失败" style="width:auto;max-width:none"/> 强制失败（测重试与死信）</label>
+  <div id="消息"></div>
   <button class="按钮" type="button" id="投递钮">签名投递一次</button>
   <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table>
+  <thead><tr><th>尝试号</th><th>时刻</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>命运/状态</th><th>响应码</th><th>中文说明</th></tr></thead>
+  <tbody id="表"></tbody>
+</table></div></section>
 
   </main>
 
 <script>
+投递台.挂骨签('#骨签位', '流水命运：签名→POST 回调→2xx 记成功/已投递；失败按签名规重试，耗尽入死信匣；停用端直接联拒');
+
+function 码中文(code, 状态) {
+  const n = parseInt(code, 10);
+  if (!n) return '未拿到对端响应（本地失败/联拒）';
+  if (n >= 200 && n < 300) return n + ' 对端已确认';
+  if (n >= 500) return n + ' 对端服务错误，可重试';
+  if (n >= 400) return n + ' 对端拒绝，按策略重试';
+  return String(n);
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/投递');
   const tb = document.getElementById('表'); tb.innerHTML='';
+  if (!rows.length) tb.innerHTML = '<tr><td colspan="8" class="说明">暂无投递流水</td></tr>';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.尝试号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.签名摘要)+'</td><td></td><td>'+投递台.安全文本(r.响应码)+'</td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const ok = r.状态 === '成功';
+    const tr = 投递台.行(
+      '<td><small>'+投递台.安全文本(r.尝试号)+'</small></td>' +
+      '<td><small>'+投递台.安全文本(r.投递时)+'</small></td>' +
+      '<td>'+投递台.事件链(r.事件号)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td>' +
+      '<td><small>'+投递台.安全文本((r.签名摘要||'').slice(0,16))+'…</small></td>' +
+      '<td class="c5"></td>' +
+      '<td>'+投递台.安全文本(r.响应码)+'</td>' +
+      '<td>'+投递台.安全文本(r.说明 || 码中文(r.响应码, r.状态))+'</td>'
+    );
+    const cell = tr.children[5];
+    cell.appendChild(投递台.徽章(r.状态, ok ? '成功' : '失败'));
+    const fate = document.createElement('div'); fate.className='命运';
+    fate.textContent = ok ? '命运：投递成功，事件转已投递' : '命运：本次失败，按重试策略再投，耗尽入死信匣';
+    cell.appendChild(fate);
+    tr.children[6].title = 码中文(r.响应码, r.状态);
+    tb.appendChild(tr);
   }
 }
 document.getElementById('投递钮').onclick = async () => {
-  const 消息 = document.getElementById('消息');
+  const box = document.getElementById('消息');
   try {
     const rep = await 投递台.postJSON('/api/投递', {
       事件号: document.getElementById('事件号').value,
       强制失败: document.getElementById('强制失败').checked,
     });
-    消息.textContent = JSON.stringify(rep);
+    投递台.渲染成败(box, true,
+      '投递完成：尝试号 ' + (rep.尝试号 || '') + '，状态 ' + (rep.状态 || '') +
+      '，响应码 ' + (rep.响应码 || 0) + '。' + (rep.说明 || ''));
     await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
+  } catch (e) {
+    投递台.渲染成败(box, false, e.message);
+    await 刷表();
+  }
 };
 document.getElementById('批量钮').onclick = async () => {
-  const rep = await 投递台.postJSON('/api/投递/批量重试', {});
-  document.getElementById('消息').textContent = '批量 '+rep.条数;
+  const box = document.getElementById('消息');
+  try {
+    const rep = await 投递台.postJSON('/api/投递/批量重试', {});
+    投递台.渲染成败(box, true, '批量重试完成，处理条数：' + (rep.条数 != null ? rep.条数 : JSON.stringify(rep)));
+  } catch (e) {
+    投递台.渲染成败(box, false, e.message);
+  }
   await 刷表();
 };
 刷表();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

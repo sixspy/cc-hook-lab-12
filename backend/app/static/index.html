@@ -25,38 +25,117 @@
   <main class="主区">
     <header class="页头">
       <h1>投递台</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <p>Webhook 投递控制台 · 停用端点联拒 · 入队/投递/重试/死信/端点/互证可点主链 · 非工单客服</p>
     </header>
+    <div id="骨签位"></div>
 
-<section class="卷"><div class="指标" id="指标"></div></section>
-<section class="卷"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></section>
-<section class="卷"><p class="说明" id="主链"></p><button class="按钮" type="button" id="互证钮">跑投递互证</button><pre id="互证出" class="说明"></pre></section>
+<section class="卷">
+  <h2 class="轨题">中文命运链</h2>
+  <div class="命运链">
+    <span class="步">端点登记（启用灯）</span><span class="箭">→</span>
+    <span class="步">同票联查入队</span><span class="箭">→</span>
+    <span class="步">待投</span><span class="箭">→</span>
+    <span class="步">投递中</span><span class="箭">→</span>
+    <span class="步">已投递</span><span class="箭">/</span>
+    <span class="步 警">重试退避</span><span class="箭">→</span>
+    <span class="步 险">死信匣</span><span class="箭">→</span>
+    <span class="步">互证对齐</span>
+  </div>
+  <div class="命运链" style="margin-top:8px">
+    <span class="步 险">停用灯 + 入队</span><span class="箭">→</span>
+    <span class="步 险">停用联拒（入队成败=false）</span><span class="箭">→</span>
+    <span class="步 警">只读归档轨 + 中文拒因</span><span class="箭">；</span>
+    <span class="步 警">历史在队行</span><span class="箭">→</span>
+    <span class="步 险">对账影子挂账（不混正式集合）</span>
+  </div>
+</section>
+
+<section class="卷">
+  <h2 class="轨题">正式口径指标（只读启用端集合）</h2>
+  <div class="指标" id="指标"></div>
+  <h2 class="轨题" style="margin-top:14px">联拒/影子分桶（不并入正式口径）</h2>
+  <div class="指标" id="影子指标"></div>
+</section>
+
+<section class="卷">
+  <h2 class="轨题">主链事件（最新 12 条正式集合）</h2>
+  <p class="说明" id="主链"></p>
+  <div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>状态/中文命运</th></tr></thead><tbody id="表"></tbody></table></div>
+</section>
+
+<section class="卷">
+  <h2 class="轨题">一键跑投递互证</h2>
+  <button class="按钮" type="button" id="互证钮">跑投递互证</button>
+  <div id="互证出"></div>
+  <pre id="互证JSON" class="说明" style="display:none"></pre>
+</section>
 
   </main>
 
 <script>
 (async () => {
-  const o = await 投递台.getJSON('/api/概览');
+  const c = await 投递台.getJSON('/api/仓情');
+  投递台.挂骨签('#骨签位', c.工程形态 || '');
+  document.getElementById('主链').textContent = '主链：' + (c.主链 || '');
+
+  const o = c.概览 || await 投递台.getJSON('/api/概览');
+  const 正式键 = ['端点数','启用端点','待投','投递中','已投递','死信','死信匣','尝试数','事件总数'];
+  const 影子键 = ['停用端挂账','停用归档拒数'];
   const box = document.getElementById('指标');
-  for (const [k,v] of Object.entries(o)) {
-    if (v && typeof v === 'object') continue;
+  for (const k of 正式键) {
+    if (!(k in o)) continue;
     const d = document.createElement('div'); d.className='卡';
-    d.innerHTML = '<small>'+投递台.安全文本(k)+'</small><b>'+投递台.安全文本(v)+'</b>';
+    d.innerHTML = '<small>'+投递台.安全文本(k)+'</small><b>'+投递台.安全文本(o[k])+'</b>';
     box.appendChild(d);
   }
-  const c = await 投递台.getJSON('/api/仓情');
-  document.getElementById('主链').textContent = c.主链 || '';
+  const sb = document.getElementById('影子指标');
+  for (const k of 影子键) {
+    if (!(k in o)) continue;
+    const d = document.createElement('div');
+    d.className = '卡 ' + (k === '停用端挂账' ? '险' : '警');
+    d.innerHTML = '<small>'+投递台.安全文本(k)+'</small><b>'+投递台.安全文本(o[k])+'</b>';
+    sb.appendChild(d);
+  }
+
   const rows = await 投递台.getJSON('/api/事件');
   const tb = document.getElementById('表');
   for (const r of rows.slice(0,12)) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td></td>');
-    tr.children[3].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td>'+投递台.事件链(r.事件号)+'</td>' +
+      '<td>'+投递台.安全文本(r.事件类型)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td><td class="c3"></td>');
+    const cell = tr.children[3];
+    cell.appendChild(投递台.徽章(r.状态));
+    const f = document.createElement('div'); f.className='命运';
+    f.textContent = 投递台.命运文(r.状态);
+    cell.appendChild(f);
+    tb.appendChild(tr);
   }
+
   document.getElementById('互证钮').onclick = async () => {
-    document.getElementById('互证出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
+    const host = document.getElementById('互证出');
+    try {
+      const rep = await 投递台.postJSON('/api/互证/跑',{});
+      const ok = !!rep.是否对齐;
+      host.innerHTML =
+        '<div class="'+(ok?'成框':'拒因框')+'">'+
+        (ok?'✅ 互证对齐合法：':'⛔ 互证撕裂非法：')+
+        投递台.安全文本(rep.说明)+'</div>' +
+        '<div class="结果格">' +
+        '<div class="卡"><small>正式总数</small><b>'+rep.事件总数+'</b></div>' +
+        '<div class="卡"><small>已投递</small><b>'+rep.已投递数+'</b></div>' +
+        '<div class="卡"><small>死信/匣待处置</small><b>'+rep.死信数+' / '+rep.死信匣待处置+'</b></div>' +
+        '<div class="卡"><small>待投中</small><b>'+rep.待投数+'</b></div>' +
+        '<div class="卡 '+(rep.停用端挂账?'险':'')+'"><small>停用挂账影子</small><b>'+rep.停用端挂账+'</b></div>' +
+        '<div class="卡"><small>归档拒因</small><b>'+rep.归档拒数+'</b></div></div>' +
+        '<p><a class="链" href="/投递互证.html">进入投递互证详情看影子明细 →</a></p>';
+    } catch (e) {
+      host.innerHTML = '<div class="拒因框">互证失败：'+投递台.安全文本(e.message)+'</div>';
+    }
   };
 })();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>

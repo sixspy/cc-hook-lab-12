@@ -24,51 +24,159 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>事件队列</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>事件队列卡片</h1>
+      <p>现行队列只读启用端集合 · 停用端被拒入队进只读归档轨 · 两轨读集合分开 · 非工单客服</p>
     </header>
+    <div id="骨签位"></div>
 
-<section class="卷">
-  <label>事件类型</label><input id="事件类型" placeholder="例如 invoice.paid"/>
-  <label>端点键</label><input id="端点键" placeholder="ep-billing" value="ep-billing"/>
-  <label>载荷摘要</label><input id="载荷摘要" placeholder="key=value"/>
-  <label>优先级</label><select id="优先级"><option>紧急</option><option selected>普通</option><option>低</option></select>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="入队钮">入队（待投）</button>
-  <button class="按钮 次" type="button" id="夹具钮">灌夹具样例</button>
-</section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>载荷摘要</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+    <section class="卷">
+      <h2 class="轨题">入队（同票联查启用灯）</h2>
+      <div class="命运链">
+        <span class="步">入队联查启用灯</span><span class="箭">→</span>
+        <span class="步 警">停用：联拒 + 归档轨</span><span class="箭">/</span>
+        <span class="步">启用：正式待投</span><span class="箭">→</span>
+        <span class="步">投递中</span><span class="箭">→</span>
+        <span class="步">已投递</span><span class="箭">/</span>
+        <span class="步 险">死信匣</span>
+      </div>
+      <label>事件类型</label><input id="事件类型" placeholder="例如 invoice.paid"/>
+      <label>端点键</label><input id="端点键" placeholder="ep-billing" value="ep-billing"/>
+      <label>载荷摘要</label><input id="载荷摘要" placeholder="key=value"/>
+      <label>优先级</label><select id="优先级"><option>紧急</option><option selected>普通</option><option>低</option></select>
+      <button class="按钮" type="button" id="入队钮">入队</button>
+      <button class="按钮 次" type="button" id="夹具钮">灌普通夹具样例</button>
+      <button class="按钮 次" type="button" id="停用夹具钮">灌「停用联拒灌队样例」（逐行）</button>
+      <div id="消息"></div>
+    </section>
+
+    <section class="卷">
+      <h2 class="轨题">正式队列 · 只读启用端集（GET /api/事件）<span id="正式数" class="徽章 启用"></span></h2>
+      <p class="说明">这里的每一行都来自 <code>事件 JOIN 投递端点 … WHERE 启用=1</code>，与库内正式口径同源；停用端物理挂账不会混进来。事件号可点进详情主链。</p>
+      <div class="表绕"><table>
+        <thead><tr><th>事件号</th><th>类型</th><th>端点键</th><th>载荷摘要</th><th>优先级</th><th>状态/中文命运</th></tr></thead>
+        <tbody id="表"></tbody>
+      </table></div>
+    </section>
+
+    <section class="卷">
+      <h2 class="轨题">只读归档轨 · 停用联拒记录（GET /api/停用归档）<span id="归档数" class="徽章 联拒"></span></h2>
+      <div class="警框">此轨只保存「停用端被拒的入队尝试」与中文拒因，<b>不是正式队列</b>，不参与待投/投递/互证正式口径。</div>
+      <div class="表绕"><table>
+        <thead><tr><th>归档号</th><th>时刻</th><th>事件号</th><th>类型</th><th>端点键</th><th>入队成败</th><th>拒因中文</th></tr></thead>
+        <tbody id="归档表"></tbody>
+      </table></div>
+    </section>
 
   </main>
 
 <script>
+投递台.挂骨签('#骨签位');
+
 async function 刷表() {
-  const rows = await 投递台.getJSON('/api/事件');
+  const [rows, arc] = await Promise.all([
+    投递台.getJSON('/api/事件'),
+    投递台.getJSON('/api/停用归档'),
+  ]);
+  document.getElementById('正式数').textContent = '正式 ' + rows.length + ' 条';
   const tb = document.getElementById('表'); tb.innerHTML='';
+  if (!rows.length) tb.innerHTML = '<tr><td colspan="6" class="说明">正式启用端队列为空</td></tr>';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td>'+投递台.事件链(r.事件号)+'</td>' +
+      '<td>'+投递台.安全文本(r.事件类型)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td>' +
+      '<td>'+投递台.安全文本(r.载荷摘要)+'</td>' +
+      '<td>'+投递台.安全文本(r.优先级)+'</td>' +
+      '<td class="s5"></td>'
+    );
+    const cell = tr.children[5];
+    cell.appendChild(投递台.徽章(r.状态));
+    const fate = document.createElement('div'); fate.className='命运';
+    fate.textContent = 投递台.命运文(r.状态);
+    cell.appendChild(fate);
+    tb.appendChild(tr);
+  }
+
+  const list = arc.归档 || [];
+  document.getElementById('归档数').textContent = '归档 ' + list.length + ' 条';
+  const ab = document.getElementById('归档表'); ab.innerHTML='';
+  if (!list.length) ab.innerHTML = '<tr><td colspan="7" class="说明">暂无停用联拒归档</td></tr>';
+  for (const r of list) {
+    const tr = 投递台.行(
+      '<td><small>'+投递台.安全文本(r.归档号)+'</small></td>' +
+      '<td><small>'+投递台.安全文本(r.时刻)+'</small></td>' +
+      '<td>'+投递台.安全文本(r.事件号 || '（未生成号）')+'</td>' +
+      '<td>'+投递台.安全文本(r.事件类型)+'</td>' +
+      '<td>'+投递台.端点链(r.端点键)+'</td>' +
+      '<td class="c5"></td>' +
+      '<td>'+投递台.安全文本(r.拒因)+'</td>'
+    );
+    tr.children[5].appendChild(投递台.徽章('入队成败=0', '联拒'));
+    ab.appendChild(tr);
   }
 }
+
 document.getElementById('入队钮').onclick = async () => {
-  const 消息 = document.getElementById('消息');
+  const box = document.getElementById('消息');
+  const body = {
+    事件类型: document.getElementById('事件类型').value,
+    端点键: document.getElementById('端点键').value,
+    载荷摘要: document.getElementById('载荷摘要').value,
+    优先级: document.getElementById('优先级').value,
+  };
   try {
-    await 投递台.postJSON('/api/事件/入队', {
-      事件类型: document.getElementById('事件类型').value,
-      端点键: document.getElementById('端点键').value,
-      载荷摘要: document.getElementById('载荷摘要').value,
-      优先级: document.getElementById('优先级').value,
-    });
-    消息.textContent = '已入队，状态待投';
-    await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
-};
-document.getElementById('夹具钮').onclick = async () => {
-  await 投递台.postJSON('/api/夹具入队/批量事件样例', {});
+    const r = await 投递台.postJSON('/api/事件/入队', body);
+    投递台.渲染成败(box, true,
+      '事件 ' + r.事件号 + ' 入队成败=true，状态「待投」；启用指纹已同票钉入。',
+      '<div class="卡"><small>事件号</small><b style="font-size:.95rem">'+投递台.安全文本(r.事件号)+'</b></div>' +
+      '<div class="卡"><small>入队成败</small><b>true</b></div>' +
+      '<div class="卡"><small>中文命运</small><b style="font-size:.95rem">待投</b></div>');
+  } catch (e) {
+    const d = e.数据 || {};
+    投递台.渲染成败(box, false, (d.拒因 || e.message) + (d.归档号 ? '\n归档号：' + d.归档号 : ''));
+  }
   await 刷表();
 };
+
+document.getElementById('夹具钮').onclick = async () => {
+  const box = document.getElementById('消息');
+  try {
+    const r = await 投递台.postJSON('/api/夹具入队/批量事件样例', {});
+    投递台.渲染成败(box, true, '普通夹具灌入完成：' + (r.入队 ? r.入队.length : 0) + ' 条全部进入正式队列。');
+  } catch (e) {
+    投递台.渲染成败(box, false, e.message);
+  }
+  await 刷表();
+};
+
+// 停用联拒灌队样例：夹具里 3 条都指向 ep-legacy（种子停用端）。
+// 批量路由遇首拒即抛，因此这里在页面侧逐行调用，保证每行成败/拒因都直接可读。
+document.getElementById('停用夹具钮').onclick = async () => {
+  const box = document.getElementById('消息');
+  let fx;
+  try {
+    fx = await 投递台.getJSON('/api/夹具');
+  } catch (e) { /* 列表失败则用内置同内容样例 */ }
+  const 样例 = [
+    {事件类型:'invoice.paid', 端点键:'ep-legacy', 载荷摘要:'stop=legacy-1', 优先级:'紧急'},
+    {事件类型:'user.created', 端点键:'ep-legacy', 载荷摘要:'stop=legacy-2', 优先级:'普通'},
+    {事件类型:'order.refund', 端点键:'ep-legacy', 载荷摘要:'stop=legacy-3', 优先级:'低'},
+  ];
+  let 拒 = 0;
+  for (let i = 0; i < 样例.length; i++) {
+    const ev = Object.assign({事件号: 'EVT-UI-FIXTURE-' + Date.now() + '-' + i}, 样例[i]);
+    try { await 投递台.postJSON('/api/事件/入队', ev); }
+    catch (e) { 拒++; }
+  }
+  投递台.渲染成败(box, 拒 === 样例.length,
+    '已按夹具「停用联拒灌队样例」逐行灌 ' + 样例.length + ' 条（端点 ep-legacy 为停用灯）：' +
+    '联拒 ' + 拒 + ' 条。正式队列表不增，全部进入下方只读归档轨并带中文拒因。');
+  await 刷表();
+};
+
 刷表();
 </script>
 
+<footer style="max-width:1100px;margin:0 auto;padding:0 16px 28px;color:#7a6c5d;font-size:12px">骨签：<code>hook-12-停用端点联拒</code> · 停用端点必须拒入队，名册灯与事件队列同票 · 双写两轨/影子不混正式集合</footer>
 </body>
 </html>
